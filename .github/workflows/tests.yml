@@ -18,5 +18,5 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Run risk management tests
-        run: python -m unittest test_risk_management.py -v
+      - name: Run all tests
+        run: python -m unittest discover -v
