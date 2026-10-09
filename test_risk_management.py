@@ -59,6 +59,33 @@ class TestRiskManagement(unittest.TestCase):
             )
 
 
+
+    def test_calculates_long_risk_reward(self):
+        ratio = calculate_risk_reward(
+            entry_price=2650,
+            stop_loss=2640,
+            take_profit=2670,
+            direction="long",
+        )
+        self.assertAlmostEqual(ratio, 2.0)
+
+    def test_calculates_short_risk_reward(self):
+        ratio = calculate_risk_reward(
+            entry_price=2650,
+            stop_loss=2660,
+            take_profit=2630,
+            direction="short",
+        )
+        self.assertAlmostEqual(ratio, 2.0)
+
+    def test_rejects_invalid_risk_reward(self):
+        with self.assertRaises(ValueError):
+            calculate_risk_reward(
+                entry_price=2650,
+                stop_loss=2660,
+                take_profit=2670,
+                direction="long",
+            )
 if __name__ == "__main__":
     unittest.main()
 
