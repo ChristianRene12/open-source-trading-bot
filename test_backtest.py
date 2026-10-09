@@ -95,7 +95,9 @@ class TestBacktest(unittest.TestCase):
             slow_period=3,
         )
 
-        self.assertIsInstance(trades, list)
+        self.assertGreater(len(trades), 0)
+        self.assertGreater(trades[0].entry, 0)
+        self.assertGreater(trades[0].exit, 0)
 
 
 class TestStatistics(unittest.TestCase):
