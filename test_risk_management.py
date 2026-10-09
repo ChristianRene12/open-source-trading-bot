@@ -19,6 +19,7 @@ class TestRiskManagement(unittest.TestCase):
         self.assertAlmostEqual(plan.stop_distance, 10.0)
         self.assertAlmostEqual(plan.position_size, 5.0)
 
+    
     def test_short_trade_stop_distance(self):
         plan = calculate_position_size(
             account_equity=10_000,
@@ -26,10 +27,12 @@ class TestRiskManagement(unittest.TestCase):
             entry_price=2640,
             stop_loss=2650,
             value_per_price_unit=1.0,
+            direction="short",
         )
 
         self.assertAlmostEqual(plan.stop_distance, 10.0)
         self.assertAlmostEqual(plan.risk_amount, 100.0)
+
 
     def test_rejects_zero_equity(self):
         with self.assertRaises(ValueError):
