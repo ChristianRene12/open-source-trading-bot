@@ -26,8 +26,9 @@ class TestBacktest(unittest.TestCase):
             backtest([100.0] * 40, 10, 10)
 
     def test_rejects_insufficient_data(self):
-        with self.assertRaises(ValueError):
-            backtest([100.0] * 10, 3, 5)
+    with self.assertRaises(ValueError):
+        backtest([100.0] * 5, 3, 5)
+
 
     def test_rejects_non_positive_prices(self):
         prices = [100.0] * 35
