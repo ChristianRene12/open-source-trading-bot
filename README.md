@@ -54,3 +54,29 @@ Contributions, bug reports, testing, and suggestions are welcome. Please documen
 ## License
 
 MIT License. See the `LICENSE` file for details.
+## Running a Backtest
+
+The project includes synthetic example prices in `sample_prices.csv`.
+
+Run the moving-average crossover backtest:
+
+```bash
+python backtest.py sample_prices.csv
+```
+
+Customize the moving-average periods:
+
+```bash
+python backtest.py sample_prices.csv --fast 3 --slow 8
+```
+
+Include estimated trading costs and export completed trades:
+
+```bash
+python backtest.py sample_prices.csv --fast 3 --slow 8 --spread-pct 0.1 --commission-pct 0.05 --slippage-pct 0.02 --export-csv trades.csv
+```
+
+The trade log will be saved to `trades.csv` in the current working directory.
+
+**Note:** The sample prices are synthetic, not real market data. Backtest results are for research and educational purposes and do not predict future performance.
+
