@@ -224,6 +224,10 @@ class TestStrategySignals(unittest.TestCase):
             0,
             "Strategy should complete a trade on these prices.",
         )
+        trade = trades[0]
+        self.assertGreater(trade.entry, 0)
+        self.assertGreater(trade.exit, 0)
+        self.assertNotEqual(trade.entry, trade.exit)
     if __name__ == "__main__":
         unittest.main()
 
