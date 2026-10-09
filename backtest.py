@@ -66,13 +66,14 @@ def backtest(
     peak = 1.0
     max_drawdown = 0.0
 
-    # These inputs are percentages, e.g. 0.02 means 0.02%.
-    # Costs are modelled as a percentage of notional per side.
     cost_per_side = (
         spread_pct / 2
         + commission_pct
         + slippage_pct
     ) / 100
+
+    if cost_per_side >= 1:
+        raise ValueError("Total cost per side must be less than 100%.")
 
     for i in range(1, len(prices)):
         if (
@@ -99,7 +100,6 @@ def backtest(
 
         elif in_position and crossed_down:
             exit_price = prices[i]
-
             gross_return = exit_price / entry - 1
             net_return = (
                 (1 + gross_return)
@@ -121,7 +121,6 @@ def backtest(
             in_position = False
             entry = None
 
-    # Close an open position at the final available price.
     if in_position and entry is not None:
         exit_price = prices[-1]
         gross_return = exit_price / entry - 1
@@ -144,7 +143,6 @@ def backtest(
 
     wins = sum(t.return_pct > 0 for t in trades)
     losses = sum(t.return_pct < 0 for t in trades)
-
     win_rate = wins / len(trades) * 100 if trades else 0.0
     total_return = (equity - 1) * 100
 
@@ -196,7 +194,7 @@ def main():
         "--spread-pct",
         type=float,
         default=0.0,
-        help="Estimated full spread as percentage of price per round trip",
+        help="Estimated full spread percentage",
     )
     parser.add_argument(
         "--commission-pct",
@@ -227,7 +225,7 @@ def main():
         with open(
             args.csv_file,
             newline="",
-            encoding="utf-8-sig"
+            encoding="utf-8-sig",
         ) as file:
             reader = csv.DictReader(file)
 
