@@ -63,10 +63,12 @@ def calculate_statistics(trades, max_drawdown=0.0):
     else:
         profit_factor = 0.0
 
-    return {
+        return {
         "completed_trades": len(trades),
         "winning_trades": wins,
         "losing_trades": losses,
         "win_rate": win_rate,
         "total_return": (equity - 1) * 100,
-        "max_draw
+        "max_drawdown": max_drawdown * 100,
+        "profit_factor": profit_factor,
+    }
