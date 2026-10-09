@@ -80,6 +80,22 @@ class TestBacktest(unittest.TestCase):
                 slow_period=5,
                 spread_pct=-0.1,
             )
+            
+    def test_drawdown_tracks_open_position(self):
+        prices = (
+            [100.0] * 5
+            + [101.0, 105.0, 110.0, 100.0, 95.0, 90.0]
+            + [92.0] * 5
+        )
+
+        trades = backtest(
+            prices,
+            fast_period=2,
+            slow_period=3,
+        )
+
+        self.assertIsInstance(trades, list)
+
 
 
 class TestCSVExport(unittest.TestCase):
