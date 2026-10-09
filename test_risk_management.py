@@ -1,7 +1,7 @@
 
 import unittest
 
-from risk_management import calculate_position_size
+from risk_management import calculate_position_size, calculate_risk_reward
 
 
 class TestRiskManagement(unittest.TestCase):
