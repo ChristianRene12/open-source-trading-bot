@@ -1,10 +1,15 @@
 
-import unittest
-import tempfile
-import os
 import csv
+import os
+import tempfile
+import unittest
 
-from backtest import sma, backtest, Trade
+from backtest import (
+    sma,
+    backtest,
+    Trade,
+    export_trades_csv,
+)
 
 
 class TestSMA(unittest.TestCase):
@@ -36,9 +41,7 @@ class TestBacktest(unittest.TestCase):
             backtest(prices, 3, 5)
 
     def test_constant_prices_produce_no_trades(self):
-        prices = [100.0] * 40
-        trades = backtest(prices, 3, 5)
-
+        trades = backtest([100.0] * 40, 3, 5)
         self.assertEqual(trades, [])
 
     def test_costs_reduce_profitable_trade_return(self):
@@ -49,9 +52,7 @@ class TestBacktest(unittest.TestCase):
         )
 
         free_trades = backtest(
-            prices,
-            fast_period=2,
-            slow_period=3,
+            prices, fast_period=2, slow_period=3
         )
 
         costly_trades = backtest(
@@ -80,45 +81,27 @@ class TestBacktest(unittest.TestCase):
                 spread_pct=-0.1,
             )
 
-    def test_trade_dataclass_stores_values(self):
-        trade = Trade(
-            entry=100.0,
-            exit=110.0,
-            return_pct=10.0,
-        )
 
-        self.assertEqual(trade.entry, 100.0)
-        self.assertEqual(trade.exit, 110.0)
-        self.assertEqual(trade.return_pct, 10.0)
+class TestCSVExport(unittest.TestCase):
 
-
-class TestCSVExportPreparation(unittest.TestCase):
-
-    def test_csv_can_store_trade_results(self):
-        trade = Trade(
-            entry=100.0,
-            exit=110.0,
-            return_pct=9.5,
-        )
+    def test_exports_trade_results(self):
+        trades = [
+            Trade(entry=100.0, exit=110.0, return_pct=9.5),
+            Trade(entry=110.0, exit=105.0, return_pct=-4.8),
+        ]
 
         with tempfile.NamedTemporaryFile(
             mode="w",
-            newline="",
-            encoding="utf-8",
             suffix=".csv",
             delete=False,
+            newline="",
+            encoding="utf-8",
         ) as temp_file:
             file_path = temp_file.name
 
-            writer = csv.writer(temp_file)
-            writer.writerow(["entry", "exit", "return_pct"])
-            writer.writerow([
-                trade.entry,
-                trade.exit,
-                trade.return_pct,
-            ])
-
         try:
+            export_trades_csv(trades, file_path)
+
             with open(
                 file_path,
                 newline="",
@@ -126,13 +109,52 @@ class TestCSVExportPreparation(unittest.TestCase):
             ) as file:
                 rows = list(csv.DictReader(file))
 
-            self.assertEqual(len(rows), 1)
-            self.assertEqual(float(rows[0]["entry"]), 100.0)
-            self.assertEqual(float(rows[0]["exit"]), 110.0)
-            self.assertEqual(float(rows[0]["return_pct"]), 9.5)
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(
+                float(rows[0]["entry"]), 100.0
+            )
+            self.assertEqual(
+                float(rows[0]["exit"]), 110.0
+            )
+            self.assertAlmostEqual(
+                float(rows[0]["return_pct"]), 9.5
+            )
+            self.assertAlmostEqual(
+                float(rows[1]["return_pct"]), -4.8
+            )
 
         finally:
-            os.remove(file_path)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
+    def test_exports_empty_trade_list(self):
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".csv",
+            delete=False,
+            newline="",
+            encoding="utf-8",
+        ) as temp_file:
+            file_path = temp_file.name
+
+        try:
+            export_trades_csv([], file_path)
+
+            with open(
+                file_path,
+                newline="",
+                encoding="utf-8",
+            ) as file:
+                rows = list(csv.reader(file))
+
+            self.assertEqual(
+                rows,
+                [["entry", "exit", "return_pct"]],
+            )
+
+        finally:
+            if os.path.exists(file_path):
+                os.remove(file_path)
 
 
 if __name__ == "__main__":
