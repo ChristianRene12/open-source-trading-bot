@@ -28,6 +28,25 @@ def sma(values, period):
     return result
 
 
+def export_trades_csv(trades, file_path):
+    """Export completed trades to a CSV file."""
+    with open(
+        file_path,
+        "w",
+        newline="",
+        encoding="utf-8",
+    ) as file:
+        writer = csv.writer(file)
+        writer.writerow(["entry", "exit", "return_pct"])
+
+        for trade in trades:
+            writer.writerow([
+                trade.entry,
+                trade.exit,
+                trade.return_pct,
+            ])
+
+
 def backtest(
     prices,
     fast_period=10,
@@ -55,6 +74,13 @@ def backtest(
         if value < 0:
             raise ValueError(f"{name} cannot be negative.")
 
+    cost_per_side = (
+        spread_pct / 2 + commission_pct + slippage_pct
+    ) / 100
+
+    if cost_per_side >= 1:
+        raise ValueError("Total cost per side must be less than 100%.")
+
     fast = sma(prices, fast_period)
     slow = sma(prices, slow_period)
 
@@ -65,15 +91,6 @@ def backtest(
     equity = 1.0
     peak = 1.0
     max_drawdown = 0.0
-
-    cost_per_side = (
-        spread_pct / 2
-        + commission_pct
-        + slippage_pct
-    ) / 100
-
-    if cost_per_side >= 1:
-        raise ValueError("Total cost per side must be less than 100%.")
 
     for i in range(1, len(prices)):
         if (
@@ -102,9 +119,7 @@ def backtest(
             exit_price = prices[i]
             gross_return = exit_price / entry - 1
             net_return = (
-                (1 + gross_return)
-                * (1 - cost_per_side) ** 2
-                - 1
+                (1 + gross_return) * (1 - cost_per_side) ** 2 - 1
             )
 
             trades.append(
@@ -125,9 +140,7 @@ def backtest(
         exit_price = prices[-1]
         gross_return = exit_price / entry - 1
         net_return = (
-            (1 + gross_return)
-            * (1 - cost_per_side) ** 2
-            - 1
+            (1 + gross_return) * (1 - cost_per_side) ** 2 - 1
         )
 
         trades.append(
@@ -190,23 +203,12 @@ def main():
     parser.add_argument("csv_file", help="CSV file with a close column")
     parser.add_argument("--fast", type=int, default=10)
     parser.add_argument("--slow", type=int, default=30)
+    parser.add_argument("--spread-pct", type=float, default=0.0)
+    parser.add_argument("--commission-pct", type=float, default=0.0)
+    parser.add_argument("--slippage-pct", type=float, default=0.0)
     parser.add_argument(
-        "--spread-pct",
-        type=float,
-        default=0.0,
-        help="Estimated full spread percentage",
-    )
-    parser.add_argument(
-        "--commission-pct",
-        type=float,
-        default=0.0,
-        help="Commission percentage per side",
-    )
-    parser.add_argument(
-        "--slippage-pct",
-        type=float,
-        default=0.0,
-        help="Estimated slippage percentage per side",
+        "--export-csv",
+        help="Optional path to export completed trades",
     )
 
     args = parser.parse_args()
@@ -246,7 +248,7 @@ def main():
 
                 prices.append(price)
 
-        backtest(
+        trades = backtest(
             prices,
             fast_period=args.fast,
             slow_period=args.slow,
@@ -254,6 +256,10 @@ def main():
             commission_pct=args.commission_pct,
             slippage_pct=args.slippage_pct,
         )
+
+        if args.export_csv:
+            export_trades_csv(trades, args.export_csv)
+            print(f"Trade log exported to: {args.export_csv}")
 
     except (OSError, ValueError) as error:
         parser.error(str(error))
