@@ -204,6 +204,26 @@ class TestCSVExport(unittest.TestCase):
                 os.remove(file_path)
 
 
-if __name__ == "__main__":
-    unittest.main()
+class TestStrategySignals(unittest.TestCase):
+
+    def test_strategy_can_complete_a_trade(self):
+        prices = (
+            [100.0] * 5
+            + [101.0, 103.0, 106.0, 110.0, 108.0, 104.0, 99.0]
+            + [98.0] * 5
+        )
+
+        trades = backtest(
+            prices,
+            fast_period=2,
+            slow_period=3,
+        )
+
+        self.assertGreater(
+            len(trades),
+            0,
+            "Strategy should complete a trade on these prices.",
+        )
+    if __name__ == "__main__":
+        unittest.main()
 
