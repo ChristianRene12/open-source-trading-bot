@@ -15,7 +15,9 @@ from backtest import (
     export_trades_csv,
     calculate_statistics,
     main,
+    load_prices_csv,
 )
+
 
 
 class TestSMA(unittest.TestCase):
@@ -157,6 +159,62 @@ class TestStatistics(unittest.TestCase):
             calculate_statistics(trades)
 
 class TestCSVInput(unittest.TestCase):
+
+    def test_loads_valid_close_csv(self):
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".csv",
+            delete=False,
+            newline="",
+            encoding="utf-8",
+        ) as temp_file:
+            temp_file.write("close\n100\n101.5\n102\n")
+            file_path = temp_file.name
+
+        try:
+            self.assertEqual(
+                load_prices_csv(file_path),
+                [100.0, 101.5, 102.0],
+            )
+        finally:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
+    def test_rejects_missing_close_column(self):
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".csv",
+            delete=False,
+            newline="",
+            encoding="utf-8",
+        ) as temp_file:
+            temp_file.write("open,high,low\n100,102,99\n")
+            file_path = temp_file.name
+
+        try:
+            with self.assertRaisesRegex(ValueError, "close"):
+                load_prices_csv(file_path)
+        finally:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
+    def test_rejects_non_positive_close_price(self):
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".csv",
+            delete=False,
+            newline="",
+            encoding="utf-8",
+        ) as temp_file:
+            temp_file.write("close\n100\n0\n")
+            file_path = temp_file.name
+
+        try:
+            with self.assertRaisesRegex(ValueError, "positive"):
+                load_prices_csv(file_path)
+        finally:
+            if os.path.exists(file_path):
+               os.remove(file_path)
 
     def test_main_accepts_close_csv(self):
         csv_content = "close\n100\n101\n102\n103\n104\n105\n"

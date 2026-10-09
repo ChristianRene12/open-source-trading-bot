@@ -1,7 +1,43 @@
 
 import argparse
 import csv
+import math
 from dataclasses import dataclass
+
+
+def load_prices_csv(file_path):
+    """Load and validate closing prices from a CSV file."""
+    with open(
+        file_path,
+        newline="",
+        encoding="utf-8-sig",
+    ) as file:
+        reader = csv.DictReader(file)
+
+        if not reader.fieldnames or "close" not in reader.fieldnames:
+            raise ValueError(
+                "CSV must contain a column named 'close'."
+            )
+
+        prices = []
+
+        for row_number, row in enumerate(reader, start=2):
+            try:
+                price = float(row["close"])
+            except (TypeError, ValueError):
+                raise ValueError(
+                    f"Invalid close price on CSV row {row_number}."
+                ) from None
+
+            if not math.isfinite(price) or price <= 0:
+                raise ValueError(
+                    f"Invalid close price on CSV row {row_number}: "
+                    "price must be finite and positive."
+                )
+
+            prices.append(price)
+
+    return prices
 
 
 @dataclass
