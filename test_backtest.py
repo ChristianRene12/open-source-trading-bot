@@ -1,4 +1,4 @@
-
+```python
 import csv
 import os
 import tempfile
@@ -9,6 +9,7 @@ from backtest import (
     backtest,
     Trade,
     export_trades_csv,
+    calculate_statistics,
 )
 
 
@@ -80,7 +81,7 @@ class TestBacktest(unittest.TestCase):
                 slow_period=5,
                 spread_pct=-0.1,
             )
-            
+
     def test_drawdown_tracks_open_position(self):
         prices = (
             [100.0] * 5
@@ -96,6 +97,44 @@ class TestBacktest(unittest.TestCase):
 
         self.assertIsInstance(trades, list)
 
+
+class TestStatistics(unittest.TestCase):
+
+    def test_calculates_statistics(self):
+        trades = [
+            Trade(100.0, 110.0, 10.0),
+            Trade(100.0, 95.0, -5.0),
+            Trade(100.0, 120.0, 20.0),
+        ]
+
+        stats = calculate_statistics(trades, max_drawdown=0.1)
+
+        self.assertEqual(stats["completed_trades"], 3)
+        self.assertEqual(stats["winning_trades"], 2)
+        self.assertEqual(stats["losing_trades"], 1)
+        self.assertAlmostEqual(stats["win_rate"], 200 / 3)
+        self.assertAlmostEqual(stats["total_return"], 25.4)
+        self.assertAlmostEqual(stats["max_drawdown"], 10.0)
+        self.assertAlmostEqual(stats["profit_factor"], 6.0)
+
+    def test_empty_trades_return_zero_statistics(self):
+        stats = calculate_statistics([])
+
+        self.assertEqual(stats["completed_trades"], 0)
+        self.assertEqual(stats["win_rate"], 0.0)
+        self.assertEqual(stats["total_return"], 0.0)
+        self.assertEqual(stats["max_drawdown"], 0.0)
+        self.assertEqual(stats["profit_factor"], 0.0)
+
+    def test_rejects_invalid_drawdown(self):
+        with self.assertRaises(ValueError):
+            calculate_statistics([], max_drawdown=1.5)
+
+    def test_rejects_total_loss_trade(self):
+        trades = [Trade(100.0, 0.0, -100.0)]
+
+        with self.assertRaises(ValueError):
+            calculate_statistics(trades)
 
 
 class TestCSVExport(unittest.TestCase):
@@ -126,18 +165,10 @@ class TestCSVExport(unittest.TestCase):
                 rows = list(csv.DictReader(file))
 
             self.assertEqual(len(rows), 2)
-            self.assertEqual(
-                float(rows[0]["entry"]), 100.0
-            )
-            self.assertEqual(
-                float(rows[0]["exit"]), 110.0
-            )
-            self.assertAlmostEqual(
-                float(rows[0]["return_pct"]), 9.5
-            )
-            self.assertAlmostEqual(
-                float(rows[1]["return_pct"]), -4.8
-            )
+            self.assertEqual(float(rows[0]["entry"]), 100.0)
+            self.assertEqual(float(rows[0]["exit"]), 110.0)
+            self.assertAlmostEqual(float(rows[0]["return_pct"]), 9.5)
+            self.assertAlmostEqual(float(rows[1]["return_pct"]), -4.8)
 
         finally:
             if os.path.exists(file_path):
@@ -175,3 +206,4 @@ class TestCSVExport(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+```
