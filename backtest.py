@@ -21,13 +21,21 @@ def sma(values, period):
         if i < period - 1:
             result.append(None)
         else:
-            window = values[i - period + 1:i + 1]
-            result.append(sum(window) / period)
+            result.append(
+                sum(values[i - period + 1:i + 1]) / period
+            )
 
     return result
 
 
-def backtest(prices, fast_period=10, slow_period=30):
+def backtest(
+    prices,
+    fast_period=10,
+    slow_period=30,
+    spread_pct=0.0,
+    commission_pct=0.0,
+    slippage_pct=0.0,
+):
     if not 0 < fast_period < slow_period:
         raise ValueError(
             "Periods must satisfy 0 < fast_period < slow_period."
@@ -39,19 +47,34 @@ def backtest(prices, fast_period=10, slow_period=30):
     if any(price <= 0 for price in prices):
         raise ValueError("All prices must be positive.")
 
+    for name, value in (
+        ("spread_pct", spread_pct),
+        ("commission_pct", commission_pct),
+        ("slippage_pct", slippage_pct),
+    ):
+        if value < 0:
+            raise ValueError(f"{name} cannot be negative.")
+
     fast = sma(prices, fast_period)
     slow = sma(prices, slow_period)
 
     trades = []
-    in_position = False
     entry = None
+    in_position = False
 
     equity = 1.0
     peak = 1.0
     max_drawdown = 0.0
 
+    # These inputs are percentages, e.g. 0.02 means 0.02%.
+    # Costs are modelled as a percentage of notional per side.
+    cost_per_side = (
+        spread_pct / 2
+        + commission_pct
+        + slippage_pct
+    ) / 100
+
     for i in range(1, len(prices)):
-        # Both current and previous SMA values must exist.
         if (
             fast[i] is None
             or slow[i] is None
@@ -76,13 +99,19 @@ def backtest(prices, fast_period=10, slow_period=30):
 
         elif in_position and crossed_down:
             exit_price = prices[i]
-            trade_return = exit_price / entry - 1
 
-            trades.append(
-                Trade(entry, exit_price, trade_return * 100)
+            gross_return = exit_price / entry - 1
+            net_return = (
+                (1 + gross_return)
+                * (1 - cost_per_side) ** 2
+                - 1
             )
 
-            equity *= 1 + trade_return
+            trades.append(
+                Trade(entry, exit_price, net_return * 100)
+            )
+
+            equity *= 1 + net_return
             peak = max(peak, equity)
 
             if peak > 0:
@@ -92,40 +121,38 @@ def backtest(prices, fast_period=10, slow_period=30):
             in_position = False
             entry = None
 
-    # Close any remaining position at the final available price.
+    # Close an open position at the final available price.
     if in_position and entry is not None:
         exit_price = prices[-1]
-        trade_return = exit_price / entry - 1
-
-        trades.append(
-            Trade(entry, exit_price, trade_return * 100)
+        gross_return = exit_price / entry - 1
+        net_return = (
+            (1 + gross_return)
+            * (1 - cost_per_side) ** 2
+            - 1
         )
 
-        equity *= 1 + trade_return
+        trades.append(
+            Trade(entry, exit_price, net_return * 100)
+        )
+
+        equity *= 1 + net_return
         peak = max(peak, equity)
 
         if peak > 0:
             drawdown = (peak - equity) / peak
             max_drawdown = max(max_drawdown, drawdown)
 
-    wins = sum(trade.return_pct > 0 for trade in trades)
-    losses = sum(trade.return_pct < 0 for trade in trades)
+    wins = sum(t.return_pct > 0 for t in trades)
+    losses = sum(t.return_pct < 0 for t in trades)
 
-    win_rate = (
-        wins / len(trades) * 100
-        if trades else 0.0
-    )
-
+    win_rate = wins / len(trades) * 100 if trades else 0.0
     total_return = (equity - 1) * 100
 
     gross_profit = sum(
-        trade.return_pct for trade in trades
-        if trade.return_pct > 0
+        t.return_pct for t in trades if t.return_pct > 0
     )
-
     gross_loss = abs(sum(
-        trade.return_pct for trade in trades
-        if trade.return_pct < 0
+        t.return_pct for t in trades if t.return_pct < 0
     ))
 
     if gross_loss > 0:
@@ -149,9 +176,9 @@ def backtest(prices, fast_period=10, slow_period=30):
         print(f"Profit factor: {profit_factor:.2f}")
 
     print(
-        "\nWARNING: This is a simplified research backtest."
-        "\nSpread, fees, slippage, position sizing and realistic"
-        "\nexecution are not included. Returns are not a forecast."
+        "\nCosts are simplified percentage estimates."
+        "\nResults exclude position sizing and financing."
+        "\nThis is research software, not a prediction of returns."
     )
 
     return trades
@@ -159,21 +186,42 @@ def backtest(prices, fast_period=10, slow_period=30):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Backtest a simple moving-average crossover strategy."
+        description="Backtest a moving-average crossover strategy."
     )
 
-    parser.add_argument(
-        "csv_file",
-        help="CSV file containing a column named 'close'."
-    )
-
+    parser.add_argument("csv_file", help="CSV file with a close column")
     parser.add_argument("--fast", type=int, default=10)
     parser.add_argument("--slow", type=int, default=30)
+    parser.add_argument(
+        "--spread-pct",
+        type=float,
+        default=0.0,
+        help="Estimated full spread as percentage of price per round trip",
+    )
+    parser.add_argument(
+        "--commission-pct",
+        type=float,
+        default=0.0,
+        help="Commission percentage per side",
+    )
+    parser.add_argument(
+        "--slippage-pct",
+        type=float,
+        default=0.0,
+        help="Estimated slippage percentage per side",
+    )
 
     args = parser.parse_args()
 
     if not 0 < args.fast < args.slow:
         parser.error("Periods must satisfy 0 < --fast < --slow.")
+
+    if min(
+        args.spread_pct,
+        args.commission_pct,
+        args.slippage_pct,
+    ) < 0:
+        parser.error("Cost percentages cannot be negative.")
 
     try:
         with open(
@@ -203,7 +251,10 @@ def main():
         backtest(
             prices,
             fast_period=args.fast,
-            slow_period=args.slow
+            slow_period=args.slow,
+            spread_pct=args.spread_pct,
+            commission_pct=args.commission_pct,
+            slippage_pct=args.slippage_pct,
         )
 
     except (OSError, ValueError) as error:
