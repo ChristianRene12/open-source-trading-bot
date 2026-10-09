@@ -4,6 +4,9 @@ import os
 import tempfile
 import unittest
 
+from contextlib import redirect_stdout
+from io import StringIO
+
 from backtest import (
     sma,
     backtest,
@@ -82,6 +85,7 @@ class TestBacktest(unittest.TestCase):
                 spread_pct=-0.1,
             )
 
+
     def test_drawdown_tracks_open_position(self):
         prices = (
             [100.0] * 5
@@ -89,15 +93,27 @@ class TestBacktest(unittest.TestCase):
             + [92.0] * 5
         )
 
-        trades = backtest(
-            prices,
-            fast_period=2,
-            slow_period=3,
-        )
+        output = StringIO()
+        with redirect_stdout(output):
+            trades = backtest(
+                prices,
+                fast_period=2,
+                slow_period=3,
+            )
 
         self.assertGreater(len(trades), 0)
-        self.assertGreater(trades[0].entry, 0)
-        self.assertGreater(trades[0].exit, 0)
+        self.assertIn("Maximum drawdown:", output.getvalue())
+
+        drawdown_line = next(
+            line for line in output.getvalue().splitlines()
+            if line.startswith("Maximum drawdown:")
+        )
+        drawdown_pct = float(
+            drawdown_line.split(":")[1].strip().rstrip("%")
+        )
+
+        self.assertGreater(drawdown_pct, 0.0)
+
 
 
 class TestStatistics(unittest.TestCase):
