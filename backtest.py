@@ -1,6 +1,6 @@
 
-import csv
 import argparse
+import csv
 from dataclasses import dataclass
 
 
@@ -89,8 +89,18 @@ def backtest(
     in_position = False
 
     equity = 1.0
-    peak = 1.0
+    peak_equity = 1.0
     max_drawdown = 0.0
+
+    def update_drawdown(current_equity):
+        nonlocal peak_equity, max_drawdown
+        peak_equity = max(peak_equity, current_equity)
+
+        if peak_equity > 0:
+            drawdown = (
+                peak_equity - current_equity
+            ) / peak_equity
+            max_drawdown = max(max_drawdown, drawdown)
 
     for i in range(1, len(prices)):
         if (
@@ -119,7 +129,9 @@ def backtest(
             exit_price = prices[i]
             gross_return = exit_price / entry - 1
             net_return = (
-                (1 + gross_return) * (1 - cost_per_side) ** 2 - 1
+                (1 + gross_return)
+                * (1 - cost_per_side) ** 2
+                - 1
             )
 
             trades.append(
@@ -127,20 +139,29 @@ def backtest(
             )
 
             equity *= 1 + net_return
-            peak = max(peak, equity)
-
-            if peak > 0:
-                drawdown = (peak - equity) / peak
-                max_drawdown = max(max_drawdown, drawdown)
+            update_drawdown(equity)
 
             in_position = False
             entry = None
 
+        # Track equity using the open position's current price.
+        if in_position and entry is not None:
+            unrealized_return = prices[i] / entry - 1
+            marked_equity = equity * (
+                1 + unrealized_return
+            )
+            update_drawdown(marked_equity)
+        else:
+            update_drawdown(equity)
+
+    # Close any remaining position at the final available price.
     if in_position and entry is not None:
         exit_price = prices[-1]
         gross_return = exit_price / entry - 1
         net_return = (
-            (1 + gross_return) * (1 - cost_per_side) ** 2 - 1
+            (1 + gross_return)
+            * (1 - cost_per_side) ** 2
+            - 1
         )
 
         trades.append(
@@ -148,11 +169,7 @@ def backtest(
         )
 
         equity *= 1 + net_return
-        peak = max(peak, equity)
-
-        if peak > 0:
-            drawdown = (peak - equity) / peak
-            max_drawdown = max(max_drawdown, drawdown)
+        update_drawdown(equity)
 
     wins = sum(t.return_pct > 0 for t in trades)
     losses = sum(t.return_pct < 0 for t in trades)
