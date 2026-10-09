@@ -37,5 +37,40 @@ class TestBacktest(unittest.TestCase):
         self.assertEqual(trades, [])
 
 
+
+    def test_costs_reduce_profitable_trade_return(self):
+        prices = (
+            [100.0] * 5
+            + [101.0, 103.0, 105.0, 104.0, 102.0, 99.0]
+            + [98.0] * 5
+        )
+
+        free_trades = backtest(
+            prices, fast_period=2, slow_period=3
+        )
+
+        costly_trades = backtest(
+            prices,
+            fast_period=2,
+            slow_period=3,
+            spread_pct=0.1,
+            commission_pct=0.05,
+            slippage_pct=0.02,
+        )
+
+        self.assertEqual(len(free_trades), len(costly_trades))
+        self.assertLess(
+            costly_trades[0].return_pct,
+            free_trades[0].return_pct,
+        )
+
+    def test_rejects_negative_costs(self):
+        with self.assertRaises(ValueError):
+            backtest(
+                [100.0] * 40,
+                fast_period=3,
+                slow_period=5,
+                spread_pct=-0.1,
+            )
 if __name__ == "__main__":
     unittest.main()
