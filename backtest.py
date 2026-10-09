@@ -5,8 +5,11 @@ import math
 from dataclasses import dataclass
 
 
+
 def load_prices_csv(file_path):
-    """Load and validate closing prices from a CSV file."""
+    """Load and validate closing prices and optional timestamps/OHLC."""
+    from datetime import datetime
+
     with open(
         file_path,
         newline="",
@@ -19,25 +22,150 @@ def load_prices_csv(file_path):
                 "CSV must contain a column named 'close'."
             )
 
+        fields = set(reader.fieldnames)
+        timestamp_column = (
+            "timestamp" if "timestamp" in fields
+            else "datetime" if "datetime" in fields
+            else None
+        )
+        has_ohlc = {"open", "high", "low", "close"}.issubset(fields)
+
         prices = []
+        previous_timestamp = None
 
         for row_number, row in enumerate(reader, start=2):
-            try:
-                price = float(row["close"])
-            except (TypeError, ValueError):
-                raise ValueError(
-                    f"Invalid close price on CSV row {row_number}."
-                ) from None
+            if timestamp_column:
+                try:
+                    timestamp = datetime.fromisoformat(
+                        row[timestamp_column].strip().replace(
+                            "Z", "+00:00"
+                        )
+                    )
+                except (ValueError, AttributeError):
+                    raise ValueError(
+                        f"Invalid timestamp on CSV row {row_number}."
+                    ) from None
 
-            if not math.isfinite(price) or price <= 0:
+                if previous_timestamp is not None:
+                    if (timestamp.tzinfo is None) != (
+                        previous_timestamp.tzinfo is None
+                    ):
+                        raise ValueError(
+                            "Timestamps must use a consistent timezone."
+                        )
+                    if timestamp <= previous_timestamp:
+                        raise ValueError(
+                            "Timestamps must be strictly increasing "
+                            f"(CSV row {row_number})."
+                        )
+
+                previous_timestamp = timestamp
+
+            columns = (
+                ("open", "high", "low", "close")
+                if has_ohlc else ("close",)
+            )
+            values = {}
+
+            for column in columns:
+                try:
+                    value = float(row[column])
+                except (TypeError, ValueError):
+                    raise ValueError(
+                        f"Invalid {column} price on CSV row {row_number}."
+                    ) from None
+
+                if not math.isfinite(value) or value <= 0:
+                    raise ValueError(
+                        f"Invalid {column} price on CSV row {row_number}: "
+                        "price must be finite and positive."
+                    )
+                values[column] = value
+
+            if has_ohlc and (
+                values["high"] < max(values["open"], values["close"])
+                or values["low"] > min(values["open"], values["close"])
+                or values["high"] < values["low"]
+            ):
                 raise ValueError(
-                    f"Invalid close price on CSV row {row_number}: "
-                    "price must be finite and positive."
+                    f"Inconsistent OHLC prices on CSV row {row_number}."
                 )
 
-            prices.append(price)
+            prices.append(values["close"])
 
     return prices
+
+
+def load_price_data(file_path):
+    """Return validated closing prices and optional timestamps."""
+    from datetime import datetime
+
+    prices = load_prices_csv(file_path)
+
+    with open(file_path, newline="", encoding="utf-8-sig") as file:
+        reader = csv.DictReader(file)
+        fields = set(reader.fieldnames or [])
+
+        timestamp_column = (
+            "timestamp" if "timestamp" in fields
+            else "datetime" if "datetime" in fields
+            else None
+        )
+
+        if timestamp_column is None:
+            raise ValueError(
+                "CSV must contain a 'timestamp' or 'datetime' "
+                "column for date-based backtesting."
+            )
+
+        timestamps = [
+            datetime.fromisoformat(
+                row[timestamp_column].strip().replace("Z", "+00:00")
+            )
+            for row in reader
+        ]
+
+    if len(prices) != len(timestamps):
+        raise ValueError("Price and timestamp counts do not match.")
+
+    return timestamps, prices
+
+
+
+def run_out_of_sample_test(
+    file_path,
+    fast_period=10,
+    slow_period=30,
+    spread_pct=0.01,
+    commission_pct=0.0,
+    slippage_pct=0.005,
+):
+    """Backtest only the final 30% of the data."""
+    timestamps, prices = load_price_data(file_path)
+    split_index = int(len(prices) * 0.7)
+
+    if split_index < slow_period + 1:
+        raise ValueError("Not enough historical data before test period.")
+
+    # Keep earlier prices for SMA calculations, but begin trading
+    # only when signals belong to the test period.
+    print(f"Test starts: {timestamps[split_index]}")
+    print(f"Test ends: {timestamps[-1]}")
+    print(f"Bars in test period: {len(prices) - split_index}")
+
+    return backtest(
+        prices,
+        fast_period=fast_period,
+        slow_period=slow_period,
+        spread_pct=spread_pct,
+        commission_pct=commission_pct,
+        slippage_pct=slippage_pct,
+        start_index=split_index,
+    )
+
+
+
+
 
 
 @dataclass
@@ -136,7 +264,9 @@ def backtest(
     spread_pct=0.0,
     commission_pct=0.0,
     slippage_pct=0.0,
+    start_index=0,
 ):
+
     """Backtest a moving-average crossover strategy."""
     if not 0 < fast_period < slow_period:
         raise ValueError(
@@ -189,7 +319,7 @@ def backtest(
             max_drawdown = max(max_drawdown, drawdown)
 
     # Calculate signals at bar i and execute at the next close.
-    for i in range(1, len(prices) - 1):
+    for i in range(max(1, start_index - 1), len(prices) - 1):
         if (
             fast[i] is None
             or slow[i] is None
@@ -281,6 +411,7 @@ def backtest(
     return trades
 
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="Backtest a moving-average crossover strategy."
@@ -292,6 +423,11 @@ def main():
     parser.add_argument("--spread-pct", type=float, default=0.0)
     parser.add_argument("--commission-pct", type=float, default=0.0)
     parser.add_argument("--slippage-pct", type=float, default=0.0)
+    parser.add_argument(
+        "--out-of-sample",
+        action="store_true",
+        help="Test only the final 30%% of the data",
+    )
     parser.add_argument(
         "--export-csv",
         help="Optional path to export completed trades",
@@ -310,41 +446,25 @@ def main():
         parser.error("Cost percentages cannot be negative.")
 
     try:
-        with open(
-            args.csv_file,
-            newline="",
-            encoding="utf-8-sig",
-        ) as file:
-            reader = csv.DictReader(file)
-
-            if (
-                not reader.fieldnames
-                or "close" not in reader.fieldnames
-            ):
-                raise ValueError(
-                    "CSV must contain a column named 'close'."
-                )
-
-            prices = []
-
-            for row_number, row in enumerate(reader, start=2):
-                try:
-                    price = float(row["close"])
-                except (TypeError, ValueError):
-                    raise ValueError(
-                        f"Invalid close price on CSV row {row_number}."
-                    )
-
-                prices.append(price)
-
-        trades = backtest(
-            prices,
-            fast_period=args.fast,
-            slow_period=args.slow,
-            spread_pct=args.spread_pct,
-            commission_pct=args.commission_pct,
-            slippage_pct=args.slippage_pct,
-        )
+        if args.out_of_sample:
+            trades = run_out_of_sample_test(
+                args.csv_file,
+                fast_period=args.fast,
+                slow_period=args.slow,
+                spread_pct=args.spread_pct,
+                commission_pct=args.commission_pct,
+                slippage_pct=args.slippage_pct,
+            )
+        else:
+            prices = load_prices_csv(args.csv_file)
+            trades = backtest(
+                prices,
+                fast_period=args.fast,
+                slow_period=args.slow,
+                spread_pct=args.spread_pct,
+                commission_pct=args.commission_pct,
+                slippage_pct=args.slippage_pct,
+            )
 
         if args.export_csv:
             export_trades_csv(trades, args.export_csv)
