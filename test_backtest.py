@@ -4,6 +4,7 @@ import os
 import tempfile
 import unittest
 
+from unittest.mock import patch
 from contextlib import redirect_stdout
 from io import StringIO
 
@@ -13,6 +14,7 @@ from backtest import (
     Trade,
     export_trades_csv,
     calculate_statistics,
+    main,
 )
 
 
@@ -154,6 +156,31 @@ class TestStatistics(unittest.TestCase):
         with self.assertRaises(ValueError):
             calculate_statistics(trades)
 
+class TestCSVInput(unittest.TestCase):
+
+    def test_main_accepts_close_csv(self):
+        csv_content = "close\n100\n101\n102\n103\n104\n105\n"
+
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".csv",
+            delete=False,
+            newline="",
+            encoding="utf-8",
+        ) as temp_file:
+            temp_file.write(csv_content)
+            file_path = temp_file.name
+
+        try:
+            with patch(
+                "sys.argv",
+                ["backtest.py", file_path, "--fast", "2", "--slow", "3"],
+            ):
+                with redirect_stdout(StringIO()):
+                    main()
+        finally:
+            if os.path.exists(file_path):
+                os.remove(file_path)
 
 class TestCSVExport(unittest.TestCase):
 
