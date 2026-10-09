@@ -1,4 +1,4 @@
-
+```python
 import argparse
 import csv
 from dataclasses import dataclass
@@ -26,6 +26,56 @@ def sma(values, period):
             )
 
     return result
+
+
+def calculate_statistics(trades, max_drawdown=0.0):
+    """Calculate performance statistics from completed trades."""
+    if not 0 <= max_drawdown <= 1:
+        raise ValueError("max_drawdown must be between 0 and 1.")
+
+    wins = sum(trade.return_pct > 0 for trade in trades)
+    losses = sum(trade.return_pct < 0 for trade in trades)
+
+    win_rate = (
+        wins / len(trades) * 100
+        if trades else 0.0
+    )
+
+    equity = 1.0
+    gross_profit = 0.0
+    gross_loss = 0.0
+
+    for trade in trades:
+        if trade.return_pct <= -100:
+            raise ValueError(
+                "Trade return cannot be -100% or lower."
+            )
+
+        equity *= 1 + trade.return_pct / 100
+
+        if trade.return_pct > 0:
+            gross_profit += trade.return_pct
+        elif trade.return_pct < 0:
+            gross_loss += abs(trade.return_pct)
+
+    total_return = (equity - 1) * 100
+
+    if gross_loss > 0:
+        profit_factor = gross_profit / gross_loss
+    elif gross_profit > 0:
+        profit_factor = float("inf")
+    else:
+        profit_factor = 0.0
+
+    return {
+        "completed_trades": len(trades),
+        "winning_trades": wins,
+        "losing_trades": losses,
+        "win_rate": win_rate,
+        "total_return": total_return,
+        "max_drawdown": max_drawdown * 100,
+        "profit_factor": profit_factor,
+    }
 
 
 def export_trades_csv(trades, file_path):
@@ -94,6 +144,7 @@ def backtest(
 
     def update_drawdown(current_equity):
         nonlocal peak_equity, max_drawdown
+
         peak_equity = max(peak_equity, current_equity)
 
         if peak_equity > 0:
@@ -144,7 +195,6 @@ def backtest(
             in_position = False
             entry = None
 
-        # Track equity using the open position's current price.
         if in_position and entry is not None:
             unrealized_return = prices[i] / entry - 1
             marked_equity = equity * (
@@ -154,7 +204,6 @@ def backtest(
         else:
             update_drawdown(equity)
 
-    # Close any remaining position at the final available price.
     if in_position and entry is not None:
         exit_price = prices[-1]
         gross_return = exit_price / entry - 1
@@ -171,37 +220,20 @@ def backtest(
         equity *= 1 + net_return
         update_drawdown(equity)
 
-    wins = sum(t.return_pct > 0 for t in trades)
-    losses = sum(t.return_pct < 0 for t in trades)
-    win_rate = wins / len(trades) * 100 if trades else 0.0
-    total_return = (equity - 1) * 100
-
-    gross_profit = sum(
-        t.return_pct for t in trades if t.return_pct > 0
-    )
-    gross_loss = abs(sum(
-        t.return_pct for t in trades if t.return_pct < 0
-    ))
-
-    if gross_loss > 0:
-        profit_factor = gross_profit / gross_loss
-    elif gross_profit > 0:
-        profit_factor = float("inf")
-    else:
-        profit_factor = 0.0
+    stats = calculate_statistics(trades, max_drawdown)
 
     print("\n--- BACKTEST RESULTS ---")
-    print(f"Completed trades: {len(trades)}")
-    print(f"Winning trades: {wins}")
-    print(f"Losing trades: {losses}")
-    print(f"Win rate: {win_rate:.2f}%")
-    print(f"Total return: {total_return:.2f}%")
-    print(f"Maximum drawdown: {max_drawdown * 100:.2f}%")
+    print(f"Completed trades: {stats['completed_trades']}")
+    print(f"Winning trades: {stats['winning_trades']}")
+    print(f"Losing trades: {stats['losing_trades']}")
+    print(f"Win rate: {stats['win_rate']:.2f}%")
+    print(f"Total return: {stats['total_return']:.2f}%")
+    print(f"Maximum drawdown: {stats['max_drawdown']:.2f}%")
 
-    if profit_factor == float("inf"):
+    if stats["profit_factor"] == float("inf"):
         print("Profit factor: Infinite (no losing trades)")
     else:
-        print(f"Profit factor: {profit_factor:.2f}")
+        print(f"Profit factor: {stats['profit_factor']:.2f}")
 
     print(
         "\nCosts are simplified percentage estimates."
@@ -284,3 +316,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
